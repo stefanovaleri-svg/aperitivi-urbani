@@ -1,0 +1,14 @@
+---
+export const prerender = false;
+
+import Layout from "../layouts/Layout.astro";
+Astro.response.status = 404;
+---
+
+<Layout title="Pagina non trovata — Aperitivi Urbani">
+  <article class="card">
+    <h2>Pagina non trovata</h2>
+    <p>La scheda richiesta non è disponibile.</p>
+    <p><a href="/">Torna a tutti i locali</a></p>
+  </article>
+</Layout>

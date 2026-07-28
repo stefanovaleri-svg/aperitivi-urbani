@@ -1,4 +1,5 @@
-import { defineCollection, z } from "astro:content";
+import { defineCollection } from "astro:content";
+import { z } from "astro/zod";
 import { glob } from "astro/loaders";
 
 const tipoEnum = z.enum([
@@ -32,11 +33,15 @@ const sentimentEnum = z.enum([
 
 const visita = z.object({
   data: z.string(),
-  post_url: z.string().url(),
+  post_url: z.url(),
   caption: z.string(),
   foto: z.array(z.string()).default([]),
   issue: z.number().int().optional(),
   fonte_tipo: z.enum(["singola", "lista"]).default("singola"),
+  sponsorizzato: z.boolean().default(false),
+  note_reel: z.string().nullable().optional(),
+  sentiment: sentimentEnum.nullable().optional(),
+  voto: z.number().min(1).max(5).nullable().optional(),
 });
 
 const locali = defineCollection({
@@ -55,6 +60,7 @@ const locali = defineCollection({
     sponsorizzato: z.boolean().default(false),
     visite: z.array(visita).min(1),
     foto: z.array(z.string()).default([]),
+    instagram_url: z.url().nullable().optional(),
     lat: z.number().optional(),
     lng: z.number().optional(),
     ultima_estrazione: z.string().optional(),

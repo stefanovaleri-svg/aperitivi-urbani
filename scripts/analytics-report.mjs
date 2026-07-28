@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Report analytics: interroga la Cloudflare GraphQL Analytics API (Web Analytics
 // via beacon token) per ciascun sito configurato, incrocia le pagine visitate
-// coi locali pubblicati in content/locali/, e produce un report JSON + XLSX.
+// coi locali pubblicati in content/locali/, e produce un report JSON + CSV.
 //
 // Uso:
 //   node scripts/analytics-report.mjs [--days=30] [--site=<slug>]
@@ -10,10 +10,9 @@
 // CF_ACCOUNT_ID. Il token deve avere il permesso "Account Analytics: Read"
 // sull'account che possiede i siti Web Analytics.
 
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import XLSX from "xlsx";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -43,8 +42,6 @@ async function loadEnvFile(envPath) {
     if (!(key in process.env)) process.env[key] = value;
   }
 }
-
-await loadEnvFile(path.join(__dirname, ".env"));
 
 const REPO_ROOT = path.join(__dirname, "..");
 const CONTENT_DIR = path.join(REPO_ROOT, "content", "locali");
@@ -360,29 +357,86 @@ function joinPathsWithLocali(byPath, localiMap) {
 }
 
 // ---------------------------------------------------------------------------
-// Output XLSX + JSON
+// Output CSV + JSON
 // ---------------------------------------------------------------------------
-function buildWorkbookSheet(rows) {
-  return XLSX.utils.json_to_sheet(rows);
+const CSV_REPORTS = [
+  {
+    key: "traffico_giornaliero",
+    suffix: "traffico-giornaliero",
+    columns: ["date", "count", "visits"],
+  },
+  {
+    key: "top_pagine",
+    suffix: "top-pagine",
+    columns: [
+      "requestPath",
+      "count",
+      "visits",
+      "slug",
+      "nome",
+      "tipo",
+      "zona",
+      "tipo_pagina",
+    ],
+  },
+  {
+    key: "provenienza",
+    suffix: "provenienza",
+    columns: ["refererHost", "count", "visits"],
+  },
+];
+
+function csvCell(value) {
+  if (value == null) return '""';
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  const raw = Array.isArray(value) ? value.join(" | ") : String(value);
+  // CSV aperti con Excel o strumenti equivalenti non devono interpretare
+  // contenuti esterni come formule.
+  const safe = /^[\u0000-\u0020]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
+  return `"${safe.replaceAll('"', '""')}"`;
 }
 
-async function writeReport(siteSlug, report) {
-  await writeFile(
-    path.join(OUT_DIR, `${siteSlug}.json`),
-    JSON.stringify(report, null, 2)
-  );
+export function rowsToCsv(rows, columns) {
+  const lines = [
+    columns.map(csvCell).join(","),
+    ...rows.map((row) => columns.map((column) => csvCell(row[column])).join(",")),
+  ];
+  return `\uFEFF${lines.join("\r\n")}\r\n`;
+}
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, buildWorkbookSheet(report.traffico_giornaliero), "Traffico giornaliero");
-  XLSX.utils.book_append_sheet(wb, buildWorkbookSheet(report.top_pagine), "Top pagine");
-  XLSX.utils.book_append_sheet(wb, buildWorkbookSheet(report.provenienza), "Provenienza");
-  XLSX.writeFile(wb, path.join(OUT_DIR, `${siteSlug}.xlsx`));
+export async function writeReport(siteSlug, report, outDir = OUT_DIR) {
+  await mkdir(outDir, { recursive: true });
+  const outputPaths = [path.join(outDir, `${siteSlug}.json`)];
+
+  const writes = [
+    writeFile(outputPaths[0], JSON.stringify(report, null, 2), "utf8"),
+  ];
+  for (const definition of CSV_REPORTS) {
+    const outputPath = path.join(
+      outDir,
+      `${siteSlug}.${definition.suffix}.csv`,
+    );
+    outputPaths.push(outputPath);
+    writes.push(
+      writeFile(
+        outputPath,
+        rowsToCsv(report[definition.key], definition.columns),
+        "utf8",
+      ),
+    );
+  }
+  await Promise.all(writes);
+  return outputPaths;
 }
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
+  await loadEnvFile(path.join(__dirname, ".env"));
   const { days, site: siteFilter, since: sinceArg, until: untilArg } = parseArgs(process.argv.slice(2));
 
   const untilDate = untilArg ? new Date(untilArg) : new Date();
@@ -398,8 +452,6 @@ async function main() {
 
   console.log(`Range: ${sinceISO} → ${untilISO} (${days} giorni)`);
   console.log(`Siti: ${sitesToRun.map((s) => s.slug).join(", ")}`);
-
-  await import("node:fs").then((fs) => fs.mkdirSync(OUT_DIR, { recursive: true }));
 
   for (const site of sitesToRun) {
     console.log(`\n--- ${site.slug} ---`);
@@ -433,12 +485,20 @@ async function main() {
     };
 
     await writeReport(site.slug, report);
-    console.log(`  Report scritto in scripts/out/${site.slug}.json e .xlsx`);
+    console.log(
+      `  Report scritto in scripts/out/${site.slug}.json e 3 file .csv`,
+    );
     console.log(`  Pageview totali: ${data.byPath.reduce((s, r) => s + r.count, 0)}`);
   }
 }
 
-main().catch((e) => {
-  console.error("Errore fatale:", e);
-  process.exit(1);
-});
+const isDirectRun =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectRun) {
+  main().catch((e) => {
+    console.error("Errore fatale:", e);
+    process.exit(1);
+  });
+}

@@ -1,5 +1,6 @@
 import { defineConfig } from "astro/config";
 import cloudflare from "@astrojs/cloudflare";
+import { unified } from "@astrojs/markdown-remark";
 import rehypeSanitize from "rehype-sanitize";
 
 export default defineConfig({
@@ -7,9 +8,10 @@ export default defineConfig({
   trailingSlash: "ignore",
   output: "static",
   adapter: cloudflare({
-    platformProxy: { enabled: true },
+    imageService: "passthrough",
+    prerenderEnvironment: "node",
   }),
   markdown: {
-    rehypePlugins: [rehypeSanitize],
+    processor: unified({ rehypePlugins: [rehypeSanitize] }),
   },
 });

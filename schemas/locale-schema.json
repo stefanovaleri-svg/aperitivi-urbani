@@ -41,6 +41,15 @@
           "trattoria",
           "pizzeria",
           "caffetteria",
+          "sushi",
+          "etnico",
+          "orientale",
+          "vegetariano",
+          "pesce",
+          "carne",
+          "pasticceria",
+          "locale-easy",
+          "locale-raffinato",
           "altro"
         ]
       }
@@ -70,6 +79,28 @@
       "default": false,
       "description": "true SOLO se la caption contiene segnali espliciti: #adv, #ad, #sponsored, 'in collaborazione con', 'collab', gifting dichiarato. In dubbio: false."
     },
+    "instagram_url": {
+      "type": ["string", "null"],
+      "format": "uri",
+      "pattern": "^https://(www\\.)?instagram\\.com/",
+      "description": "Compatibilità legacy: URL del post principale. La sorgente normalizzata resta visite[].post_url."
+    },
+    "foto": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": [],
+      "description": "Compatibilità legacy: nomi delle immagini della galleria principale."
+    },
+    "lat": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": 90
+    },
+    "lng": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180
+    },
     "visite": {
       "type": "array",
       "minItems": 1,
@@ -80,8 +111,11 @@
         "properties": {
           "data": {
             "type": "string",
-            "format": "date",
-            "description": "Data del post Instagram (YYYY-MM-DD)."
+            "anyOf": [
+              { "format": "date" },
+              { "const": "" }
+            ],
+            "description": "Data del post Instagram (YYYY-MM-DD). La stringa vuota è ammessa solo per record legacy non ancora verificati."
           },
           "post_url": {
             "type": "string",
@@ -109,6 +143,22 @@
             "enum": ["singola", "lista"],
             "default": "singola",
             "description": "'singola' = post dedicato a questo locale; 'lista' = post che cita più locali (es. roundup, classifica). Per le visite 'lista' è atteso che molti campi del locale siano null, perché il post non fornisce dettagli specifici."
+          },
+          "sponsorizzato": {
+            "type": "boolean",
+            "default": false,
+            "description": "Compatibilità legacy. Nel CMS normalizzato viene migrato a sponsored_disclosure."
+          },
+          "note_reel": {
+            "type": ["string", "null"]
+          },
+          "sentiment": {
+            "enum": ["entusiasta", "positivo", "neutro", "tiepido", "critico", null]
+          },
+          "voto": {
+            "type": ["number", "null"],
+            "minimum": 1,
+            "maximum": 5
           }
         }
       }

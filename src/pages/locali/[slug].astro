@@ -1,25 +1,46 @@
 ---
-export const prerender = true;
-import { getCollection, render } from "astro:content";
+export const prerender = false;
+import { render } from "astro:content";
 import Layout from "../../layouts/Layout.astro";
+import { getBindings } from "../../lib/cms/bindings";
+import { getPublicLocale } from "../../lib/cms/public-source";
 
-export async function getStaticPaths() {
-  const locali = await getCollection("locali");
-  return locali.map((loc) => ({
-    params: { slug: loc.data.slug },
-    props: { loc },
-  }));
+const slug = Astro.params.slug ?? "";
+const bindings = getBindings(Astro.locals);
+const loc = await getPublicLocale(bindings, slug);
+if (!loc) return Astro.rewrite("/404");
+const mapsKey = bindings.GOOGLE_MAPS_API_KEY ?? "";
+let Content: Awaited<ReturnType<typeof render>>["Content"] | null = null;
+if (loc.legacyEntry) {
+  ({ Content } = await render(loc.legacyEntry));
 }
-
-const { loc } = Astro.props;
-const { Content } = await render(loc);
 const visiteOrdinate = [...loc.data.visite].sort((a, b) => b.data.localeCompare(a.data));
 
-function starsStr(v: number): string {
-  const full = Math.floor(v);
-  const half = v - full >= 0.5 ? 1 : 0;
-  return "★".repeat(full) + (half ? "½" : "") + "☆".repeat(5 - full - half);
+function disclosureLabel(kind: string | undefined): string {
+  const labels: Record<string, string> = {
+    invited: "Invito dichiarato nel post originale.",
+    gifted: "Prodotto o servizio omaggiato, come dichiarato nel post originale.",
+    paid_sponsorship:
+      "Sponsorizzazione pagata, come dichiarato nel post originale.",
+    affiliate: "Affiliazione dichiarata nel post originale.",
+    other_disclosed: "Altra collaborazione dichiarata nel post originale.",
+    unknown: "Disclosure commerciale presente, tipologia ancora da verificare.",
+  };
+  return labels[kind ?? ""] ?? "Disclosure dichiarata nel post originale.";
 }
+
+function galleryUrl(value: string): string {
+  if (/^(https?:)?\//.test(value)) return value;
+  return `/images/locali/${loc!.data.slug}/${value}`;
+}
+
+const directionsUrl =
+  loc.data.directions_url ??
+  (loc.data.indirizzo
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        `${loc.data.indirizzo}, ${loc.data.citta ?? "Milano"}`,
+      )}`
+    : null);
 ---
 
 <Layout title={`${loc.data.nome} — Aperitivi Urbani`} description={`Recensione di ${loc.data.nome} a ${loc.data.zona ?? "Milano"}`}>
@@ -34,15 +55,17 @@ function starsStr(v: number): string {
       {loc.data.fascia_prezzo && <> · {loc.data.fascia_prezzo}</>}
     </p>
 
-    {loc.data.voto_dedotto != null && (
-      <p class="stars" style="font-size:1.3rem;margin:0.5rem 0">
-        {starsStr(loc.data.voto_dedotto)}
-      </p>
+    {(loc.data.esperienze?.length ?? 0) > 0 && (
+      <div class="experience-list" aria-label="Esperienze">
+        {loc.data.esperienze?.map((experience) => (
+          <span>{experience}</span>
+        ))}
+      </div>
     )}
 
     {loc.data.sponsorizzato && (
       <p style="background:var(--warn-bg);border-left:3px solid var(--accent);padding:0.6rem 1rem;font-size:0.9rem;border-radius:4px">
-        Contenuto sponsorizzato / in collaborazione (come dichiarato nel post originale)
+        {disclosureLabel(loc.data.disclosure_kind)}
       </p>
     )}
 
@@ -51,7 +74,7 @@ function starsStr(v: number): string {
         <div style="position:relative">
           <img
             id="gallery-hero-img"
-            src={`/images/locali/${loc.data.slug}/${loc.data.foto[0]}`}
+            src={galleryUrl(loc.data.foto[0])}
             alt={loc.data.nome}
             style="width:100%;aspect-ratio:4/3;object-fit:cover;object-position:center;border-radius:10px;display:block;image-rendering:auto"
           />
@@ -67,8 +90,8 @@ function starsStr(v: number): string {
               <img
                 class="gallery-thumb"
                 data-index={i}
-                data-full={`/images/locali/${loc.data.slug}/${f}`}
-                src={`/images/locali/${loc.data.slug}/${f}`}
+                data-full={galleryUrl(f)}
+                src={galleryUrl(f)}
                 alt=""
                 style={`width:56px;height:56px;object-fit:cover;object-position:center;border-radius:6px;cursor:pointer;flex:0 0 auto;border:2px solid ${i === 0 ? "var(--accent)" : "transparent"};image-rendering:auto`}
               />
@@ -100,6 +123,37 @@ function starsStr(v: number): string {
       </script>
     )}
 
+    <div class="decision-actions" aria-label="Azioni">
+      {directionsUrl && (
+        <a
+          class="decision-action"
+          href={directionsUrl}
+          target="_blank"
+          rel="noopener"
+          data-track-event="directions_click"
+        >
+          Indicazioni
+        </a>
+      )}
+      <button class="decision-action" id="save-locale" type="button" data-track-event="save">
+        Salva
+      </button>
+      <button class="decision-action" id="share-locale" type="button" data-track-event="share">
+        Condividi
+      </button>
+      {loc.data.booking_url && (
+        <a
+          class="decision-action"
+          href={loc.data.booking_url}
+          target="_blank"
+          rel="sponsored noopener"
+          data-track-event="booking_click"
+        >
+          Prenota
+        </a>
+      )}
+    </div>
+
 
     <section>
       <h3>Visite</h3>
@@ -126,29 +180,168 @@ function starsStr(v: number): string {
         <p class="muted" style="font-size:0.95rem;margin-bottom:0.75rem">
           {loc.data.indirizzo}{loc.data.citta ? `, ${loc.data.citta}` : ""}
         </p>
-        <div style="border-radius:10px;overflow:hidden;border:1px solid var(--cream-border)">
-          <iframe
-            width="100%"
-            height="380"
-            style="border:0;display:block"
-            loading="lazy"
-            allowfullscreen
-            referrerpolicy="no-referrer-when-downgrade"
-            src={`https://www.google.com/maps/embed/v1/place?key=${import.meta.env.GOOGLE_MAPS_API_KEY}&q=${encodeURIComponent((loc.data.indirizzo ?? "") + ", " + (loc.data.citta ?? "Milano"))}`}
-          ></iframe>
-        </div>
+        {mapsKey && (
+          <div style="border-radius:10px;overflow:hidden;border:1px solid var(--cream-border)">
+            <iframe
+              width="100%"
+              height="380"
+              style="border:0;display:block"
+              loading="lazy"
+              allowfullscreen
+              referrerpolicy="no-referrer-when-downgrade"
+              src={`https://www.google.com/maps/embed/v1/place?key=${mapsKey}&q=${encodeURIComponent((loc.data.indirizzo ?? "") + ", " + (loc.data.citta ?? "Milano"))}`}
+            ></iframe>
+          </div>
+        )}
       </section>
     )}
 
     <section style="margin-top:2rem">
-      <Content />
+      {Content ? <Content /> : <p style="white-space:pre-line">{loc.body}</p>}
     </section>
   </article>
+
+  <script
+    is:inline
+    define:vars={{
+      listingId: loc.data.listing_id ?? "",
+      localeSlug: loc.data.slug,
+      localeName: loc.data.nome,
+    }}
+  >
+    (function () {
+      var saveButton = document.getElementById("save-locale");
+      var shareButton = document.getElementById("share-locale");
+      var storageKey = "aperitivi_urbani_saved_locali";
+
+      function uuid() {
+        if (crypto.randomUUID) return crypto.randomUUID();
+        var bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        bytes[6] = (bytes[6] & 15) | 64;
+        bytes[8] = (bytes[8] & 63) | 128;
+        var hex = Array.from(bytes, function (value) {
+          return value.toString(16).padStart(2, "0");
+        }).join("");
+        return [
+          hex.slice(0, 8),
+          hex.slice(8, 12),
+          hex.slice(12, 16),
+          hex.slice(16, 20),
+          hex.slice(20),
+        ].join("-");
+      }
+
+      function savedLocales() {
+        try {
+          var parsed = JSON.parse(localStorage.getItem(storageKey) || "[]");
+          return Array.isArray(parsed)
+            ? parsed.filter(function (item) { return typeof item === "string"; })
+            : [];
+        } catch (_) {
+          return [];
+        }
+      }
+
+      function getSessionId() {
+        var key = "aperitivi_urbani_session";
+        try {
+          var value = localStorage.getItem(key);
+          if (!value) {
+            value = uuid();
+            localStorage.setItem(key, value);
+          }
+          return value;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function track(eventType) {
+        if (!listingId) return;
+        var sessionId = getSessionId();
+        if (!sessionId) return;
+        fetch("/api/events", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          keepalive: true,
+          body: JSON.stringify({
+            listingId: listingId,
+            eventType: eventType,
+            eventId: uuid(),
+            sessionId: sessionId,
+          }),
+        }).catch(function () {});
+      }
+
+      document.querySelectorAll("[data-track-event]").forEach(function (element) {
+        element.addEventListener("click", function () {
+          track(element.getAttribute("data-track-event"));
+        });
+      });
+
+      if (saveButton) {
+        var saved = savedLocales();
+        if (saved.indexOf(localeSlug) !== -1) saveButton.textContent = "Salvato";
+        saveButton.addEventListener("click", function () {
+          var current = savedLocales();
+          if (current.indexOf(localeSlug) === -1) current.push(localeSlug);
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(current));
+          } catch (_) {}
+          saveButton.textContent = "Salvato";
+        });
+      }
+
+      if (shareButton) {
+        shareButton.addEventListener("click", async function () {
+          try {
+            if (navigator.share) {
+              await navigator.share({ title: localeName, url: location.href });
+            } else {
+              await navigator.clipboard.writeText(location.href);
+              shareButton.textContent = "Link copiato";
+            }
+          } catch {}
+        });
+      }
+    })();
+  </script>
 </Layout>
 
 <style>
   .scheda { padding: 1.75rem; }
   .scheda h3 { margin-top: 1.5rem; }
+  .experience-list,
+  .decision-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 1rem 0;
+  }
+  .experience-list span {
+    border-radius: 999px;
+    background: rgba(58, 143, 160, 0.12);
+    color: var(--teal-dark);
+    padding: 0.3rem 0.7rem;
+    font-size: 0.85rem;
+  }
+  .decision-action {
+    border: 1px solid var(--teal);
+    border-radius: 999px;
+    background: var(--white);
+    color: var(--teal-dark);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    padding: 0.55rem 0.9rem;
+    text-decoration: none;
+  }
+  .decision-action:hover {
+    background: var(--teal);
+    color: var(--white);
+    text-decoration: none;
+  }
   @media (max-width: 640px) {
     .scheda { padding: 1.25rem; }
   }
