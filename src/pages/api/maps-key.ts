@@ -1,12 +1,14 @@
 export const prerender = false;
 
 import type { APIRoute } from "astro";
+import { getBindings } from "../../lib/cms/bindings";
 
 export const GET: APIRoute = async ({ locals }) => {
-  const runtime = (locals as any).runtime;
-  const env = runtime?.env ?? import.meta.env;
-  const key = env.GOOGLE_MAPS_API_KEY ?? "";
+  const key = getBindings(locals).GOOGLE_MAPS_API_KEY ?? "";
   return new Response(JSON.stringify({ key }), {
-    headers: { "content-type": "application/json" },
+    headers: {
+      "cache-control": "no-store",
+      "content-type": "application/json",
+    },
   });
 };

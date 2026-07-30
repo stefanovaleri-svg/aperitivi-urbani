@@ -2,8 +2,9 @@
 interface Props {
   title: string;
   description?: string;
+  admin?: boolean;
 }
-const { title, description } = Astro.props;
+const { title, description, admin = false } = Astro.props;
 ---
 
 <!doctype html>
@@ -14,12 +15,16 @@ const { title, description } = Astro.props;
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
     {description && <meta name="description" content={description} />}
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"
-    />
+    {!admin && (
+      <>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"
+        />
+      </>
+    )}
     <style is:global>
       :root {
         --teal: #3a8fa0;
@@ -113,18 +118,24 @@ const { title, description } = Astro.props;
         header.site h1 { font-size: 1.3rem; }
       }
     </style>
-    <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "483a9a30282c4fdb95a8bfde2de693cb"}'></script>
+    {!admin && (
+      <script is:inline defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "483a9a30282c4fdb95a8bfde2de693cb"}'></script>
+    )}
   </head>
   <body>
     <header class="site">
       <h1><a href="/">Aperitivi Urbani</a></h1>
-      <p>Le recensioni di locali milanesi di Valeria Carbone</p>
+      <p>{admin ? "Gestione editoriale protetta" : "Le recensioni di locali milanesi di Valeria Carbone"}</p>
     </header>
     <main>
       <slot />
     </main>
     <footer class="site">
-      <p>Contenuti riprodotti su licenza dell'autrice — <a href="https://www.instagram.com/aperitivi_urbani/">@aperitivi_urbani</a></p>
+      {admin ? (
+        <p>CMS protetto da Cloudflare Access</p>
+      ) : (
+        <p>Fonte e attribuzione editoriale: <a href="https://www.instagram.com/aperitivi_urbani/">@aperitivi_urbani</a></p>
+      )}
     </footer>
   </body>
 </html>

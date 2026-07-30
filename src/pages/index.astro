@@ -1,9 +1,10 @@
 ---
-export const prerender = true;
-import { getCollection } from "astro:content";
+export const prerender = false;
 import Layout from "../layouts/Layout.astro";
+import { getBindings } from "../lib/cms/bindings";
+import { listPublicLocales } from "../lib/cms/public-source";
 
-const locali = await getCollection("locali");
+const locali = await listPublicLocales(getBindings(Astro.locals));
 
 locali.sort((a, b) => {
   const da = a.data.visite[a.data.visite.length - 1].data;
@@ -12,15 +13,24 @@ locali.sort((a, b) => {
 });
 
 const zone = [...new Set(locali.map((l) => l.data.zona).filter(Boolean))].sort();
+const esperienze = [
+  ...new Set(locali.flatMap((l) => l.data.esperienze ?? []).filter(Boolean)),
+].sort();
 const TIPI_TUTTI = ["aperitivo","ristorante","cocktail-bar","wine-bar","bistrot","trattoria","pizzeria","caffetteria","sushi","etnico","orientale","vegetariano","pesce","carne","pasticceria","locale-easy","locale-raffinato","altro"];
 const TIPO_LABEL: Record<string,string> = {"locale-easy":"Locale easy","locale-raffinato":"Locale raffinato"};
 const fasceDisponibili = [...new Set(locali.map((l) => l.data.fascia_prezzo).filter(Boolean))].sort();
 const hasSponsor = locali.some((l) => l.data.sponsorizzato);
 
-function starsStr(v: number): string {
-  const full = Math.floor(v);
-  const half = v - full >= 0.5 ? 1 : 0;
-  return "★".repeat(full) + (half ? "½" : "") + "☆".repeat(5 - full - half);
+function disclosureLabel(kind: string | undefined): string {
+  const labels: Record<string, string> = {
+    invited: "invito dichiarato",
+    gifted: "omaggio dichiarato",
+    paid_sponsorship: "sponsorizzazione dichiarata",
+    affiliate: "affiliazione dichiarata",
+    other_disclosed: "collaborazione dichiarata",
+    unknown: "disclosure da verificare",
+  };
+  return labels[kind ?? ""] ?? "disclosure dichiarata";
 }
 
 const mapLocali = locali.map(l => ({
@@ -82,11 +92,27 @@ const mapLocaliJson = JSON.stringify(mapLocali);
       </div>
     )}
 
+    {esperienze.length > 0 && (
+      <div class="filter-group">
+        <details class="filter-dropdown esperienza-dropdown">
+          <summary id="esperienza-summary">Esperienza</summary>
+          <div class="chip-group" role="group">
+            {esperienze.map((experience) => (
+              <label class="chip">
+                <input type="checkbox" class="f-esperienza" value={experience} />
+                <span>{experience}</span>
+              </label>
+            ))}
+          </div>
+        </details>
+      </div>
+    )}
+
     {hasSponsor && (
       <div class="filter-group">
         <label class="toggle">
           <input type="checkbox" id="f-sponsor" checked />
-          <span>Mostra anche sponsorizzati</span>
+          <span>Mostra anche contenuti con disclosure</span>
         </label>
       </div>
     )}
@@ -120,6 +146,7 @@ const mapLocaliJson = JSON.stringify(mapLocali);
           data-slug={loc.data.slug}
           data-zona={loc.data.zona ?? ""}
           data-tipi={loc.data.tipo.join(",")}
+          data-esperienze={(loc.data.esperienze ?? []).join(",")}
           data-fascia={loc.data.fascia_prezzo ?? ""}
           data-sponsor={loc.data.sponsorizzato ? "1" : "0"}
           data-data-visita={ultima.data}
@@ -132,16 +159,11 @@ const mapLocaliJson = JSON.stringify(mapLocali);
             <div class="muted" style="font-size:0.9rem;margin-top:0.25rem">
               {loc.data.zona || "Milano"}{loc.data.tipo.length > 0 && <> · {loc.data.tipo.join(", ")}</>}
             </div>
-            {loc.data.voto_dedotto != null && (
-              <div class="stars" style="margin-top:0.5rem">
-                {starsStr(loc.data.voto_dedotto)}
-              </div>
-            )}
             <div class="muted" style="font-size:0.85rem;margin-top:0.5rem">
               ultima visita: {ultima.data}
             </div>
             {loc.data.sponsorizzato && (
-              <div style="margin-top:0.5rem;display:inline-block;background:var(--warn-bg);color:var(--ink);font-size:0.75rem;padding:0.15rem 0.5rem;border-radius:4px">sponsorizzato</div>
+              <div style="margin-top:0.5rem;display:inline-block;background:var(--warn-bg);color:var(--ink);font-size:0.75rem;padding:0.15rem 0.5rem;border-radius:4px">{disclosureLabel(loc.data.disclosure_kind)}</div>
             )}
           </a>
         </li>
@@ -157,6 +179,7 @@ const mapLocaliJson = JSON.stringify(mapLocali);
   fetch('/api/maps-key')
     .then(r => r.json())
     .then(data => {
+      if (!data.key) return;
       var s = document.createElement('script');
       s.src = 'https://maps.googleapis.com/maps/api/js?key=' + (data.key || '') + '&callback=initMap';
       s.async = true; s.defer = true;
@@ -197,9 +220,14 @@ const mapLocaliJson = JSON.stringify(mapLocali);
       window._markersBySlug = window._markersBySlug || {};
       window._markersBySlug[locale.slug] = marker;
 
-      var infoWindow = new google.maps.InfoWindow({
-        content: '<a href="/locali/' + locale.slug + '" style="font-family:sans-serif;font-weight:600;color:#1b3942;text-decoration:none">' + locale.nome + '</a>'
-      });
+      var infoLink = document.createElement('a');
+      infoLink.href = '/locali/' + encodeURIComponent(locale.slug);
+      infoLink.textContent = locale.nome;
+      infoLink.style.fontFamily = 'sans-serif';
+      infoLink.style.fontWeight = '600';
+      infoLink.style.color = '#1b3942';
+      infoLink.style.textDecoration = 'none';
+      var infoWindow = new google.maps.InfoWindow({ content: infoLink });
 
       marker.addListener('click', function() {
         infoWindow.open(map, marker);
@@ -380,13 +408,15 @@ const mapLocaliJson = JSON.stringify(mapLocali);
   const fZona = Array.from(document.querySelectorAll<HTMLInputElement>(".f-zona"));
   const fTipo = Array.from(document.querySelectorAll<HTMLInputElement>(".f-tipo"));
   const fFascia = Array.from(document.querySelectorAll<HTMLInputElement>(".f-fascia"));
+  const fEsperienza = Array.from(document.querySelectorAll<HTMLInputElement>(".f-esperienza"));
   const fSponsor = document.getElementById("f-sponsor") as HTMLInputElement | null;
-  const sortSelect = document.getElementById("sort-select") as HTMLSelectElement;
+  const sortSelect = document.querySelector<HTMLSelectElement>("#sort-select")!;
   const resetBtn = document.getElementById("reset-filters")!;
   const filterDropdowns = Array.from(document.querySelectorAll<HTMLDetailsElement>(".filter-dropdown"));
   const zonaSummary = document.getElementById("zona-summary");
   const tipoSummary = document.getElementById("tipo-summary");
   const fasciaSummary = document.getElementById("fascia-summary");
+  const esperienzaSummary = document.getElementById("esperienza-summary");
 
   function parseFascia(card: HTMLElement): number | null {
     const f = card.dataset.fascia || "";
@@ -435,6 +465,7 @@ const mapLocaliJson = JSON.stringify(mapLocali);
       zone: fZona.filter((c) => c.checked).map((c) => c.value),
       tipi: fTipo.filter((c) => c.checked).map((c) => c.value),
       fasce: fFascia.filter((c) => c.checked).map((c) => c.value),
+      esperienze: fEsperienza.filter((c) => c.checked).map((c) => c.value),
       sponsor: fSponsor ? fSponsor.checked : true,
       sort: sortSelect.value,
     };
@@ -445,6 +476,7 @@ const mapLocaliJson = JSON.stringify(mapLocali);
     if (state.zone.length) p.set("zone", state.zone.join(","));
     if (state.tipi.length) p.set("tipi", state.tipi.join(","));
     if (state.fasce.length) p.set("fasce", state.fasce.join(","));
+    if (state.esperienze.length) p.set("esperienze", state.esperienze.join(","));
     if (!state.sponsor) p.set("sponsor", "0");
     if (state.sort) p.set("sort", state.sort);
     const qs = p.toString();
@@ -471,6 +503,11 @@ const mapLocaliJson = JSON.stringify(mapLocali);
     } else if (fasciaParam) {
       fFascia.forEach((c) => (c.checked = c.value === fasciaParam));
     }
+    const esperienzeParam = p.get("esperienze");
+    if (esperienzeParam) {
+      const set = new Set(esperienzeParam.split(","));
+      fEsperienza.forEach((c) => (c.checked = set.has(c.value)));
+    }
     if (fSponsor && p.get("sponsor") === "0") fSponsor.checked = false;
     const sortParam = p.get("sort");
     if (sortParam) sortSelect.value = sortParam;
@@ -484,12 +521,15 @@ const mapLocaliJson = JSON.stringify(mapLocali);
       const zona = card.dataset.zona || "";
       const tipi = (card.dataset.tipi || "").split(",");
       const fascia = card.dataset.fascia || "";
+      const esperienzeCard = (card.dataset.esperienze || "").split(",").filter(Boolean);
       const sponsor = card.dataset.sponsor === "1";
 
       const ok =
         (s.zone.length === 0 || s.zone.includes(zona)) &&
         (s.tipi.length === 0 || s.tipi.every((t) => tipi.includes(t))) &&
         (s.fasce.length === 0 || s.fasce.includes(fascia)) &&
+        (s.esperienze.length === 0 ||
+          s.esperienze.every((experience) => esperienzeCard.includes(experience))) &&
         (s.sponsor || !sponsor);
 
       card.style.display = ok ? "" : "none";
@@ -501,6 +541,7 @@ const mapLocaliJson = JSON.stringify(mapLocali);
     updateSummaryLabel(zonaSummary, "Zona", s.zone.length);
     updateSummaryLabel(tipoSummary, "Tipo", s.tipi.length);
     updateSummaryLabel(fasciaSummary, "Prezzo", s.fasce.length);
+    updateSummaryLabel(esperienzaSummary, "Esperienza", s.esperienze.length);
 
     const bySlug = (window as unknown as { _markersBySlug?: Record<string, { setVisible: (v: boolean) => void }> })._markersBySlug;
     if (bySlug) {
@@ -511,7 +552,7 @@ const mapLocaliJson = JSON.stringify(mapLocali);
     }
   }
 
-  [...fZona, ...fTipo, ...fFascia, ...(fSponsor ? [fSponsor] : [])].forEach((el) =>
+  [...fZona, ...fTipo, ...fFascia, ...fEsperienza, ...(fSponsor ? [fSponsor] : [])].forEach((el) =>
     el.addEventListener("change", apply)
   );
 
@@ -524,6 +565,7 @@ const mapLocaliJson = JSON.stringify(mapLocali);
     fZona.forEach((c) => (c.checked = false));
     fTipo.forEach((c) => (c.checked = false));
     fFascia.forEach((c) => (c.checked = false));
+    fEsperienza.forEach((c) => (c.checked = false));
     if (fSponsor) fSponsor.checked = true;
     sortSelect.value = "";
     sortCards("");

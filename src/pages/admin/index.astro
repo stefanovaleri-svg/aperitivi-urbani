@@ -1,214 +1,819 @@
 ---
-import { getCollection } from "astro:content";
+export const prerender = false;
 import Layout from "../../layouts/Layout.astro";
 
-const locali = await getCollection("locali");
-locali.sort((a, b) => a.data.nome.localeCompare(b.data.nome, "it"));
+const principal = Astro.locals.cmsPrincipal;
 ---
 
-<Layout title="Admin — Aperitivi Urbani" description="Pannello admin">
-  <section id="gate" class="card admin-card">
-    <h2 style="margin-top:0">Admin</h2>
-    <p class="muted">Inserisci la password admin per modificare i locali.</p>
-    <label for="gate-pwd">Password</label>
-    <input id="gate-pwd" type="password" autocomplete="off" />
-    <button id="gate-btn" type="button" class="btn-primary">Entra</button>
-    <p id="gate-err" class="error" style="display:none"></p>
-  </section>
+<Layout title="CMS — Aperitivi Urbani" description="Gestione editoriale protetta" admin>
+  <header class="admin-header">
+    <div>
+      <p class="eyebrow">CMS protetto</p>
+      <h2>Locali e visite</h2>
+      <p class="muted">
+        D1 conserva bozze e approvazioni; le immagini restano private in R2 finché la
+        scheda non è pubblicata.
+      </p>
+    </div>
+    <div class="identity">
+      <strong>{principal?.email}</strong>
+      <span>{principal?.role}</span>
+    </div>
+  </header>
 
-  <section id="lista" class="card admin-card" style="display:none">
-    <h2 style="margin-top:0">Modifica locali</h2>
-    <p class="muted">{locali.length} {locali.length === 1 ? "locale" : "locali"} in archivio. Clicca per modificare.</p>
-    <p id="delete-err" class="error" style="display:none"></p>
-    <ul class="locale-list">
-      {locali.map((l) => (
-        <li data-slug={l.data.slug}>
-          <a href={`/admin/${l.data.slug}/`}>
-            <strong>{l.data.nome}</strong>
-            <span class="muted">
-              {l.data.zona ?? "Milano"} · {l.data.tipo.join(", ")}
-              {l.data.indirizzo && <> · {l.data.indirizzo}</>}
-            </span>
-          </a>
-          <button type="button" class="btn-delete" data-slug={l.data.slug} data-nome={l.data.nome}>Elimina</button>
-        </li>
-      ))}
-    </ul>
-    <p class="muted hint">
-      Le modifiche vengono commitate su <code>main</code>. Il sito si ricostruisce automaticamente in 1-2 minuti.
-    </p>
-  </section>
+  <p id="status" class="status" role="status">Caricamento…</p>
+
+  <div class="admin-grid">
+    <aside class="panel">
+      <div class="panel-heading">
+        <h3>Schede</h3>
+        <button id="new-venue" type="button" class="secondary">Nuova</button>
+      </div>
+      <ul id="venue-list" class="venue-list" aria-label="Schede CMS"></ul>
+    </aside>
+
+    <main class="panel editor">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow" id="editor-mode">Nuova bozza</p>
+          <h3 id="editor-title">Crea una scheda</h3>
+        </div>
+        <span id="record-state" class="pill">draft</span>
+      </div>
+
+      <form id="venue-form">
+        <div class="field-grid">
+          <label>Nome <input name="name" required maxlength="180" /></label>
+          <label>Slug <input name="slug" required maxlength="120" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" /></label>
+          <label>Città <input name="city" required value="Milano" maxlength="120" /></label>
+          <label>Zona <input name="neighbourhood" maxlength="160" /></label>
+          <label class="wide">Indirizzo <input name="address" maxlength="500" /></label>
+          <label>Latitudine <input name="latitude" type="number" min="-90" max="90" step="any" /></label>
+          <label>Longitudine <input name="longitude" type="number" min="-180" max="180" step="any" /></label>
+          <label>Fascia prezzo
+            <select name="priceTier">
+              <option value="">Non indicata</option>
+              <option value="1">€</option><option value="2">€€</option>
+              <option value="3">€€€</option><option value="4">€€€€</option>
+              <option value="5">€€€€€</option>
+            </select>
+          </label>
+          <label>Google Place ID <input name="googlePlaceId" maxlength="255" /></label>
+          <label class="wide">URL indicazioni <input name="directionsUrl" type="url" maxlength="2048" /></label>
+          <label class="wide">URL prenotazione <input name="bookingUrl" type="url" maxlength="2048" /></label>
+        </div>
+
+        <fieldset id="creator-fields">
+          <legend>Creator e fonte</legend>
+          <div class="field-grid">
+            <label>Handle creator <input name="creatorHandle" required value="aperitivi_urbani" maxlength="30" /></label>
+            <label>Nome creator <input name="creatorDisplayName" required value="Aperitivi Urbani" maxlength="180" /></label>
+            <label class="wide">Post Instagram sorgente <input name="sourcePostUrl" type="url" maxlength="2048" /></label>
+            <label class="wide">Attribuzione <input name="attributionText" maxlength="500" placeholder="@creator · post originale" /></label>
+            <label>Approvazione
+              <select name="creatorApprovalStatus">
+                <option value="pending">In attesa</option>
+                <option value="approved">Approvata</option>
+                <option value="rejected">Rifiutata</option>
+              </select>
+            </label>
+            <label>Data approvazione <input name="creatorApprovedAt" type="date" /></label>
+            <label>Disclosure
+              <select name="disclosureKind">
+                <option value="unknown">Da verificare</option>
+                <option value="none">Nessuna</option>
+                <option value="invited">Invito</option>
+                <option value="gifted">Prodotto/servizio omaggio</option>
+                <option value="paid_sponsorship">Sponsorizzazione pagata</option>
+                <option value="affiliate">Affiliazione</option>
+                <option value="other_disclosed">Altra collaborazione dichiarata</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+
+        <label>Testo editoriale
+          <textarea name="editorialText" rows="8" maxlength="20000"></textarea>
+        </label>
+        <label>Experience tag <span class="muted">(etichetta|dimensione, separati da virgole)</span>
+          <input name="experienceTags" maxlength="1000" placeholder="date night|occasion, terrazza|setting" />
+        </label>
+
+        <fieldset id="visit-fields">
+          <legend>Prima visita</legend>
+          <div class="field-grid">
+            <label>Data visita <input name="visitedOn" type="date" /></label>
+            <label>Tipo fonte
+              <select name="sourceKind"><option value="single">Post singolo</option><option value="list">Post-lista</option></select>
+            </label>
+          </div>
+          <label>Caption originale
+            <textarea name="visitCaption" rows="5" maxlength="20000"></textarea>
+          </label>
+        </fieldset>
+
+        <div class="actions">
+          <button id="save-venue" type="submit" class="primary">Crea bozza</button>
+          <button id="publish-venue" type="button" class="secondary" hidden>Pubblica</button>
+          <button id="archive-venue" type="button" class="danger" hidden>Archivia</button>
+        </div>
+      </form>
+
+      <section id="governance-controls" class="media-box" hidden>
+        <h4>Lifecycle creator e sito</h4>
+        <p class="muted">
+          Solo reviewer e owner. Le revisioni evitano sovrascritture concorrenti;
+          revoca licenza e archiviazione sono definitive.
+        </p>
+        <div class="field-grid">
+          <label>Stato creator
+            <select id="governance-creator-status">
+              <option value="prospect">prospect</option>
+              <option value="onboarding">onboarding</option>
+              <option value="active">active</option>
+              <option value="paused">paused</option>
+              <option value="archived">archived</option>
+            </select>
+          </label>
+          <label>Stato licenza
+            <select id="governance-license-status">
+              <option value="pending">pending</option>
+              <option value="active">active</option>
+              <option value="expired">expired</option>
+              <option value="revoked">revoked</option>
+            </select>
+          </label>
+          <label>Inizio licenza <input id="governance-license-start" type="date" /></label>
+          <label>Fine licenza <input id="governance-license-end" type="date" /></label>
+          <label>Stato sito
+            <select id="governance-site-status">
+              <option value="draft">draft</option>
+              <option value="active">active</option>
+              <option value="paused">paused</option>
+              <option value="archived">archived</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions governance-actions">
+          <button id="save-creator-lifecycle" type="button" class="secondary">
+            Salva lifecycle creator
+          </button>
+          <button id="save-site-lifecycle" type="button" class="secondary">
+            Salva lifecycle sito
+          </button>
+        </div>
+      </section>
+
+      <form id="media-form" class="media-box" hidden>
+        <h4>Carica immagine</h4>
+        <label>File JPEG, PNG o WebP (max 8 MiB)
+          <input name="file" type="file" accept="image/jpeg,image/png,image/webp" required />
+        </label>
+        <label>Testo alternativo <input name="altText" maxlength="500" required /></label>
+        <label class="checkbox"><input name="isHero" type="checkbox" /> Immagine principale</label>
+        <button type="submit" class="secondary">Carica in R2</button>
+      </form>
+      <section id="media-rights" class="media-box" hidden>
+        <h4>Diritti media</h4>
+        <p class="muted">Gli upload R2 devono essere approvati prima della pubblicazione. Una revoca è definitiva.</p>
+        <ul id="media-list" class="media-list"></ul>
+      </section>
+    </main>
+  </div>
 </Layout>
 
 <style>
-  .admin-card {
-    background: var(--cream);
-    color: var(--ink);
-    border-radius: 10px;
-    padding: 1.5rem;
-    max-width: 720px;
-    margin: 0 auto;
-  }
-  .muted { color: var(--muted); }
-  label { display: block; font-weight: 600; margin-bottom: 0.4rem; }
-  input[type="password"] {
-    width: 100%;
-    padding: 0.75rem 0.85rem;
-    border: 1px solid var(--cream-border);
-    border-radius: 6px;
-    background: #fff;
-    font: inherit;
-    color: var(--ink);
-    min-height: 48px;
-    margin-bottom: 0.75rem;
-  }
-  .btn-primary {
-    background: var(--accent);
-    color: var(--white);
-    border: none;
-    border-radius: 6px;
-    padding: 0.85rem 1.25rem;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-    min-height: 48px;
-  }
-  .btn-primary:hover { background: #b9521f; }
-  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-  .error {
-    background: #fdecea;
-    color: #8a2018;
-    padding: 0.75rem 1rem;
-    border-radius: 6px;
-    margin-top: 1rem;
-    font-size: 0.9rem;
-  }
-  .locale-list {
-    list-style: none;
-    padding: 0;
-    margin: 1rem 0;
-    display: grid;
-    gap: 0.5rem;
-  }
-  .locale-list li {
-    display: flex;
-    align-items: stretch;
-    gap: 0.6rem;
-  }
-  .locale-list a {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    padding: 0.75rem 1rem;
-    background: rgba(58, 143, 160, 0.05);
-    border: 1px solid var(--cream-border);
-    border-radius: 6px;
-    color: var(--ink);
-    text-decoration: none;
-  }
-  .locale-list a:hover {
-    background: rgba(58, 143, 160, 0.12);
-    border-color: var(--teal);
-  }
-  .locale-list .muted { font-size: 0.85rem; }
-  .btn-delete {
-    flex-shrink: 0;
-    align-self: center;
-    background: var(--warn-bg);
-    color: #8a2018;
-    border: 1px solid #e6c56b;
-    border-radius: 6px;
-    padding: 0.5rem 0.9rem;
-    font: inherit;
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .btn-delete:hover { background: #ffe69c; }
-  .btn-delete:disabled { opacity: 0.6; cursor: not-allowed; }
-  .hint { font-size: 0.85rem; margin-top: 1.5rem; }
-  code { background: rgba(0,0,0,0.05); padding: 0.1rem 0.35rem; border-radius: 3px; }
+  .admin-header,.panel-heading,.actions,.identity{display:flex;align-items:center}
+  .admin-header{justify-content:space-between;gap:1rem;margin-bottom:1rem}
+  .admin-header h2,.panel h3{margin:0}
+  .eyebrow{margin:0 0 .25rem;text-transform:uppercase;letter-spacing:.11em;font-size:.72rem;font-weight:700;color:var(--accent-soft)}
+  .muted{color:var(--muted)}
+  .identity{flex-direction:column;align-items:flex-end;font-size:.85rem}
+  .identity span,.pill{background:var(--accent-soft);color:var(--ink);border-radius:999px;padding:.15rem .55rem}
+  .status{border-radius:6px;padding:.65rem .85rem;background:rgba(255,255,255,.12)}
+  .status.error{background:#fdecea;color:#8a2018}
+  .status.ok{background:#dff4e4;color:#174f28}
+  .admin-grid{display:grid;grid-template-columns:minmax(240px,.7fr) minmax(0,2fr);gap:1rem;align-items:start}
+  .panel{background:var(--cream);color:var(--ink);border-radius:10px;padding:1rem}
+  .panel-heading{justify-content:space-between;gap:.75rem;margin-bottom:1rem}
+  .venue-list{list-style:none;margin:0;padding:0;display:grid;gap:.5rem}
+  .venue-list button{width:100%;text-align:left;background:#fff;border:1px solid var(--cream-border);border-radius:7px;padding:.7rem;color:var(--ink);cursor:pointer}
+  .venue-list button[aria-current="true"]{border-color:var(--accent);box-shadow:0 0 0 2px rgba(190,92,45,.15)}
+  .venue-list small{display:block;color:var(--muted);margin-top:.2rem}
+  form{display:grid;gap:1rem}
+  fieldset{border:1px solid var(--cream-border);border-radius:8px;padding:1rem}
+  legend{font-weight:700;padding:0 .35rem}
+  .field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}
+  label{display:grid;gap:.35rem;font-size:.9rem;font-weight:600}
+  label.wide{grid-column:1/-1}
+  input,select,textarea{width:100%;box-sizing:border-box;border:1px solid var(--cream-border);border-radius:6px;padding:.65rem;background:#fff;color:var(--ink);font:inherit}
+  textarea{resize:vertical}
+  .actions{gap:.6rem;flex-wrap:wrap}
+  button{border-radius:6px;padding:.7rem 1rem;font:inherit;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.55;cursor:wait}
+  .primary{background:var(--accent);color:#fff;border:1px solid var(--accent)}
+  .secondary{background:#fff;color:var(--ink);border:1px solid var(--cream-border)}
+  .danger{background:#fdecea;color:#8a2018;border:1px solid #e8b8b3}
+  .media-box{border-top:1px solid var(--cream-border);margin-top:1.25rem;padding-top:1.25rem}
+  .media-box h4{margin:0}
+  .governance-actions{margin-top:1rem}
+  .media-list{list-style:none;margin:0;padding:0;display:grid;gap:.6rem}
+  .media-list li{border:1px solid var(--cream-border);border-radius:7px;padding:.65rem;display:grid;gap:.45rem}
+  .media-list small{color:var(--muted)}
+  .media-actions{display:flex;gap:.4rem;flex-wrap:wrap}
+  .checkbox{display:flex;align-items:center}
+  .checkbox input{width:auto}
+  @media (max-width:760px){.admin-grid,.field-grid{grid-template-columns:1fr}.admin-header{align-items:flex-start}.identity{align-items:flex-start}.wide{grid-column:auto}}
 </style>
 
 <script>
-  const STORAGE_KEY = "admin_pwd_v1";
-  const gate = document.getElementById("gate")!;
-  const lista = document.getElementById("lista")!;
-  const gatePwd = document.getElementById("gate-pwd") as HTMLInputElement;
-  const gateBtn = document.getElementById("gate-btn") as HTMLButtonElement;
-  const gateErr = document.getElementById("gate-err") as HTMLElement;
+  type VenueSummary = {
+    venueId: string;
+    listingId: string;
+    name: string;
+    slug: string;
+    status: string;
+    approvalStatus: string;
+    creatorHandle: string;
+    revision: number;
+  };
 
-  function showLista() {
-    gate.style.display = "none";
-    lista.style.display = "";
+  type CmsSession = {
+    principal: { email: string; role: "owner" | "reviewer" | "editor" };
+    csrfToken: string;
+    writesEnabled: boolean;
+  };
+
+  const venueForm = document.querySelector<HTMLFormElement>("#venue-form")!;
+  const mediaForm = document.querySelector<HTMLFormElement>("#media-form")!;
+  const mediaRights = document.querySelector<HTMLElement>("#media-rights")!;
+  const mediaList = document.querySelector<HTMLUListElement>("#media-list")!;
+  const list = document.querySelector<HTMLUListElement>("#venue-list")!;
+  const status = document.querySelector<HTMLElement>("#status")!;
+  const publishButton = document.querySelector<HTMLButtonElement>("#publish-venue")!;
+  const archiveButton = document.querySelector<HTMLButtonElement>("#archive-venue")!;
+  const saveButton = document.querySelector<HTMLButtonElement>("#save-venue")!;
+  const creatorFields = document.querySelector<HTMLFieldSetElement>("#creator-fields")!;
+  const visitFields = document.querySelector<HTMLFieldSetElement>("#visit-fields")!;
+  const governanceControls = document.querySelector<HTMLElement>("#governance-controls")!;
+  const creatorStatus = document.querySelector<HTMLSelectElement>("#governance-creator-status")!;
+  const licenseStatus = document.querySelector<HTMLSelectElement>("#governance-license-status")!;
+  const licenseStart = document.querySelector<HTMLInputElement>("#governance-license-start")!;
+  const licenseEnd = document.querySelector<HTMLInputElement>("#governance-license-end")!;
+  const siteStatus = document.querySelector<HTMLSelectElement>("#governance-site-status")!;
+  const saveCreatorLifecycle = document.querySelector<HTMLButtonElement>(
+    "#save-creator-lifecycle",
+  )!;
+  const saveSiteLifecycle = document.querySelector<HTMLButtonElement>(
+    "#save-site-lifecycle",
+  )!;
+  let session: CmsSession;
+  let selected: VenueSummary | null = null;
+  let selectedTags: Array<{ slug: string; label: string; dimension: string }> = [];
+  let governanceRecord: Record<string, any> | null = null;
+
+  function message(text: string, kind = "") {
+    status.textContent = text;
+    status.className = `status ${kind}`.trim();
   }
 
-  if (sessionStorage.getItem(STORAGE_KEY)) showLista();
+  async function api<T>(url: string, init: RequestInit = {}): Promise<T> {
+    const headers = new Headers(init.headers);
+    if (init.method && init.method !== "GET") {
+      headers.set("X-CSRF-Token", session.csrfToken);
+    }
+    const response = await fetch(url, { ...init, headers, credentials: "same-origin" });
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      issues?: unknown[];
+    };
+    if (!response.ok) {
+      const issues = Array.isArray(body.issues) ? ` ${body.issues.join("; ")}` : "";
+      throw new Error(`${body.error || `HTTP ${response.status}`}${issues}`);
+    }
+    return body as T;
+  }
 
-  async function verify(pwd: string) {
-    const res = await fetch("/api/update-locale", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ password: pwd, ping: true }),
+  function field(name: string): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
+    return venueForm.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+  }
+
+  function nullable(name: string): string | null {
+    const value = field(name).value.trim();
+    return value || null;
+  }
+
+  function numberOrNull(name: string): number | null {
+    const value = field(name).value;
+    return value === "" ? null : Number(value);
+  }
+
+  function slugify(value: string): string {
+    return value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+  }
+
+  function tagPayload() {
+    const values = field("experienceTags").value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const unchanged =
+      values.join(",") ===
+      selectedTags.map((tag) => `${tag.label}|${tag.dimension}`).join(",");
+    if (unchanged) return selectedTags;
+    const dimensions = new Set([
+      "occasion",
+      "group",
+      "dietary",
+      "setting",
+      "time",
+      "price",
+      "atmosphere",
+      "other",
+    ]);
+    return values.map((value) => {
+      const [rawLabel, rawDimension = "other"] = value.split("|", 2);
+      const label = rawLabel.trim();
+      const dimension = dimensions.has(rawDimension.trim())
+        ? rawDimension.trim()
+        : "other";
+      return { slug: slugify(label), label, dimension };
     });
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      throw new Error(j.error || `HTTP ${res.status}`);
+  }
+
+  function renderList(venues: VenueSummary[]) {
+    list.replaceChildren();
+    for (const venue of venues) {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.venueId = venue.venueId;
+      button.setAttribute("aria-current", selected?.venueId === venue.venueId ? "true" : "false");
+      const title = document.createElement("strong");
+      title.textContent = venue.name;
+      const meta = document.createElement("small");
+      meta.textContent = `${venue.status} · ${venue.approvalStatus} · ${venue.creatorHandle}`;
+      button.appendChild(title);
+      button.appendChild(meta);
+      button.addEventListener("click", () => selectVenue(venue));
+      item.appendChild(button);
+      list.appendChild(item);
     }
   }
 
-  gateBtn.addEventListener("click", async () => {
-    gateErr.style.display = "none";
-    const pwd = gatePwd.value.trim();
-    if (!pwd) { gateErr.textContent = "Inserisci la password."; gateErr.style.display = ""; return; }
-    gateBtn.disabled = true;
+  function renderMedia(items: Array<Record<string, any>>) {
+    mediaList.replaceChildren();
+    for (const media of items) {
+      const item = document.createElement("li");
+      const title = document.createElement("strong");
+      title.textContent = String(media.original_filename || media.id);
+      const meta = document.createElement("small");
+      meta.textContent =
+        media.storage_provider === "legacy_static"
+          ? `legacy static · migrare in R2 prima del cutover`
+          : `${media.storage_provider} · ${media.state} · diritti: ${media.rights_status}`;
+      item.append(title, meta);
+      if (
+        session.principal.role !== "editor" &&
+        media.storage_provider === "r2" &&
+        media.state === "ready" &&
+        media.rights_status !== "revoked"
+      ) {
+        const actions = document.createElement("div");
+        actions.className = "media-actions";
+        for (const [value, label] of [
+          ["approved", "Approva"],
+          ["restricted", "Limita"],
+          ["revoked", "Revoca"],
+        ]) {
+          if (media.rights_status === value) continue;
+          if (value === "approved" && selected?.status === "published") continue;
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = value === "revoked" ? "danger" : "secondary";
+          button.textContent = label;
+          button.addEventListener("click", async () => {
+            if (value === "revoked" && !confirm("Revocare definitivamente questo media?")) {
+              return;
+            }
+            button.disabled = true;
+            try {
+              await api(`/api/admin/media/${encodeURIComponent(String(media.id))}`, {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ rightsStatus: value }),
+              });
+              if (selected) await selectVenue(selected);
+              message(`Diritti media aggiornati: ${label.toLowerCase()}.`, "ok");
+            } catch (error) {
+              message((error as Error).message, "error");
+            } finally {
+              button.disabled = false;
+            }
+          });
+          actions.appendChild(button);
+        }
+        item.appendChild(actions);
+      }
+      mediaList.appendChild(item);
+    }
+    if (!items.length) {
+      const empty = document.createElement("li");
+      empty.textContent = "Nessun media.";
+      mediaList.appendChild(empty);
+    }
+  }
+
+  function renderGovernance(venue: Record<string, any>) {
+    governanceRecord = venue;
+    const canManage = session.principal.role !== "editor";
+    governanceControls.hidden = !canManage;
+    if (!canManage) return;
+    creatorStatus.value = String(venue.creator_status);
+    licenseStatus.value = String(venue.creator_license_status);
+    licenseStart.value = String(venue.creator_license_starts_at || "").slice(0, 10);
+    licenseEnd.value = String(venue.creator_license_ends_at || "").slice(0, 10);
+    siteStatus.value = String(venue.site_status);
+    const licenceRevoked = venue.creator_license_status === "revoked";
+    licenseStatus.disabled = licenceRevoked;
+    licenseStart.disabled = licenceRevoked;
+    licenseEnd.disabled = licenceRevoked;
+    const siteArchived = venue.site_status === "archived";
+    siteStatus.disabled = siteArchived;
+    saveSiteLifecycle.disabled = siteArchived;
+  }
+
+  async function refreshList() {
+    const body = await api<{ venues: VenueSummary[] }>("/api/admin/venues");
+    renderList(body.venues);
+  }
+
+  function setCreateMode() {
+    selected = null;
+    selectedTags = [];
+    governanceRecord = null;
+    venueForm.reset();
+    venueForm
+      .querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+        "input, select, textarea",
+      )
+      .forEach((control) => (control.disabled = false));
+    field("city").value = "Milano";
+    field("creatorHandle").value = "aperitivi_urbani";
+    field("creatorDisplayName").value = "Aperitivi Urbani";
+    field("creatorApprovalStatus").value = "pending";
+    field("disclosureKind").value = "unknown";
+    field("sourceKind").value = "single";
+    creatorFields.disabled = false;
+    field("creatorHandle").disabled = false;
+    field("creatorDisplayName").disabled = false;
+    visitFields.disabled = false;
+    saveButton.textContent = "Crea bozza";
+    publishButton.hidden = true;
+    archiveButton.hidden = true;
+    mediaForm.hidden = true;
+    mediaRights.hidden = true;
+    governanceControls.hidden = true;
+    mediaList.replaceChildren();
+    saveButton.hidden = false;
+    applyRoleControls(false);
+    document.querySelector("#editor-mode")!.textContent = "Nuova bozza";
+    document.querySelector("#editor-title")!.textContent = "Crea una scheda";
+    document.querySelector("#record-state")!.textContent = "draft";
+    renderList([]);
+    refreshList().catch((error) => message(error.message, "error"));
+  }
+
+  async function selectVenue(summary: VenueSummary) {
     try {
-      await verify(pwd);
-      sessionStorage.setItem(STORAGE_KEY, pwd);
-      showLista();
-    } catch (e) {
-      gateErr.textContent = (e as Error).message;
-      gateErr.style.display = "";
+      message(`Caricamento di ${summary.name}…`);
+      const body = await api<{ venue: Record<string, any> }>(
+        `/api/admin/venues/${encodeURIComponent(summary.venueId)}`,
+      );
+      const venue = body.venue;
+      selected = {
+        ...summary,
+        revision: Number(venue.listing_revision),
+        status: String(venue.listing_status),
+      };
+      selectedTags = Array.isArray(venue.experience_tags) ? venue.experience_tags : [];
+      renderMedia(Array.isArray(venue.media) ? venue.media : []);
+      renderGovernance(venue);
+      const values: Record<string, unknown> = {
+        name: venue.name,
+        slug: venue.slug,
+        city: venue.city,
+        neighbourhood: venue.neighborhood,
+        address: venue.address,
+        googlePlaceId: venue.google_place_id,
+        latitude: venue.latitude,
+        longitude: venue.longitude,
+        priceTier: typeof venue.price_band === "string" ? venue.price_band.length : "",
+        directionsUrl: venue.directions_url,
+        bookingUrl: venue.booking_url,
+        creatorHandle: String(venue.creator_handle || "").replace(/^@/, ""),
+        creatorDisplayName: venue.creator_display_name,
+        sourcePostUrl: venue.source_post_url,
+        attributionText: venue.attribution_text,
+        editorialText: venue.editorial_text,
+        creatorApprovalStatus: venue.creator_approval_status,
+        creatorApprovedAt: String(venue.creator_approved_at || "").slice(0, 10),
+        disclosureKind: venue.sponsored_disclosure,
+        experienceTags: selectedTags
+          .map((tag) => `${tag.label}|${tag.dimension}`)
+          .join(","),
+      };
+      for (const [name, value] of Object.entries(values)) field(name).value = value == null ? "" : String(value);
+      creatorFields.disabled = false;
+      field("creatorHandle").disabled = true;
+      field("creatorDisplayName").disabled = true;
+      visitFields.disabled = true;
+      const published = selected.status === "published";
+      venueForm
+        .querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+          "input, select, textarea",
+        )
+        .forEach((control) => (control.disabled = published));
+      applyRoleControls(true);
+      saveButton.textContent = "Salva modifiche";
+      saveButton.hidden = published;
+      publishButton.hidden = session.principal.role === "editor" || selected.status === "published";
+      archiveButton.hidden = session.principal.role === "editor";
+      mediaForm.hidden = published;
+      mediaRights.hidden = false;
+      document.querySelector("#editor-mode")!.textContent = "Modifica scheda";
+      document.querySelector("#editor-title")!.textContent = selected.name;
+      document.querySelector("#record-state")!.textContent = selected.status;
+      await refreshList();
+      message("Scheda caricata.", "ok");
+    } catch (error) {
+      message((error as Error).message, "error");
+    }
+  }
+
+  function applyRoleControls(existing: boolean) {
+    if (!session || session.principal.role !== "editor") return;
+    field("creatorApprovalStatus").disabled = true;
+    field("creatorApprovedAt").disabled = true;
+    if (existing) {
+      field("sourcePostUrl").disabled = true;
+      field("attributionText").disabled = true;
+      field("disclosureKind").disabled = true;
+    }
+  }
+
+  function commonPayload() {
+    const payload: Record<string, unknown> = {
+      name: field("name").value.trim(),
+      slug: field("slug").value.trim(),
+      city: field("city").value.trim(),
+      neighbourhood: nullable("neighbourhood"),
+      address: nullable("address"),
+      googlePlaceId: nullable("googlePlaceId"),
+      latitude: numberOrNull("latitude"),
+      longitude: numberOrNull("longitude"),
+      priceTier: numberOrNull("priceTier"),
+      directionsUrl: nullable("directionsUrl"),
+      bookingUrl: nullable("bookingUrl"),
+      sourcePostUrl: nullable("sourcePostUrl"),
+      attributionText: nullable("attributionText"),
+      editorialText: field("editorialText").value,
+      creatorApprovalStatus: field("creatorApprovalStatus").value,
+      creatorApprovedAt: nullable("creatorApprovedAt"),
+      disclosureKind: field("disclosureKind").value,
+      experienceTags: tagPayload(),
+    };
+    if (session.principal.role === "editor") {
+      delete payload.creatorApprovalStatus;
+      delete payload.creatorApprovedAt;
+      if (selected) {
+        delete payload.sourcePostUrl;
+        delete payload.attributionText;
+        delete payload.disclosureKind;
+      }
+    }
+    return payload;
+  }
+
+  venueForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!venueForm.reportValidity()) return;
+    saveButton.disabled = true;
+    try {
+      if (selected) {
+        const body = await api<{ venue: Record<string, any> }>(
+          `/api/admin/venues/${encodeURIComponent(selected.venueId)}`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ revision: selected.revision, ...commonPayload() }),
+          },
+        );
+        selected.revision = Number(body.venue.listing_revision);
+        selected.name = String(body.venue.name);
+        message("Modifiche salvate e registrate nell’audit log.", "ok");
+      } else {
+        const payload = {
+          ...commonPayload(),
+          creatorHandle: field("creatorHandle").value.trim(),
+          creatorDisplayName: field("creatorDisplayName").value.trim(),
+          visitedOn: nullable("visitedOn"),
+          visitCaption: nullable("visitCaption"),
+          sourceKind: field("sourceKind").value,
+        };
+        const body = await api<{ venue: { venueId: string; listingId: string; revision: number } }>(
+          "/api/admin/venues",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          },
+        );
+        await refreshList();
+        const summary = [...list.querySelectorAll<HTMLButtonElement>("button")]
+          .find((button) => button.dataset.venueId === body.venue.venueId);
+        summary?.click();
+        message("Bozza creata.", "ok");
+      }
+      await refreshList();
+    } catch (error) {
+      message((error as Error).message, "error");
     } finally {
-      gateBtn.disabled = false;
+      saveButton.disabled = false;
     }
   });
 
-  gatePwd.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") gateBtn.click();
+  publishButton.addEventListener("click", async () => {
+    if (!selected || !confirm(`Pubblicare “${selected.name}”?`)) return;
+    publishButton.disabled = true;
+    try {
+      await api(`/api/admin/venues/${encodeURIComponent(selected.venueId)}/publish`, { method: "POST" });
+      selected.status = "published";
+      publishButton.hidden = true;
+      document.querySelector("#record-state")!.textContent = "published";
+      await refreshList();
+      message("Scheda pubblicata.", "ok");
+    } catch (error) {
+      message((error as Error).message, "error");
+    } finally {
+      publishButton.disabled = false;
+    }
   });
 
-  const deleteErr = document.getElementById("delete-err") as HTMLElement;
+  archiveButton.addEventListener("click", async () => {
+    if (!selected || !confirm(`Archiviare “${selected.name}”?`)) return;
+    archiveButton.disabled = true;
+    try {
+      await api(`/api/admin/venues/${encodeURIComponent(selected.venueId)}/archive`, { method: "POST" });
+      setCreateMode();
+      message("Scheda archiviata; il record rimane nell’audit log.", "ok");
+    } catch (error) {
+      message((error as Error).message, "error");
+    } finally {
+      archiveButton.disabled = false;
+    }
+  });
 
-  document.querySelectorAll<HTMLButtonElement>(".btn-delete").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const slug = btn.dataset.slug!;
-      const nome = btn.dataset.nome!;
-      if (!confirm(`Eliminare definitivamente "${nome}"? L'operazione non può essere annullata.`)) {
+  saveCreatorLifecycle.addEventListener("click", async () => {
+    if (!selected || !governanceRecord) return;
+    if (
+      licenseStatus.value === "revoked" &&
+      governanceRecord.creator_license_status !== "revoked" &&
+      !confirm("Revocare definitivamente la licenza creator?")
+    ) {
+      return;
+    }
+    if (
+      creatorStatus.value === "archived" &&
+      governanceRecord.creator_status !== "archived" &&
+      !confirm("Archiviare definitivamente il creator?")
+    ) {
+      return;
+    }
+    saveCreatorLifecycle.disabled = true;
+    try {
+      const payload: Record<string, unknown> = {
+        revision: Number(governanceRecord.creator_revision),
+      };
+      if (creatorStatus.value !== String(governanceRecord.creator_status)) {
+        payload.status = creatorStatus.value;
+      }
+      if (licenseStatus.value !== String(governanceRecord.creator_license_status)) {
+        payload.licenseStatus = licenseStatus.value;
+      }
+      const previousStart = String(
+        governanceRecord.creator_license_starts_at || "",
+      ).slice(0, 10);
+      const previousEnd = String(
+        governanceRecord.creator_license_ends_at || "",
+      ).slice(0, 10);
+      if (licenseStart.value !== previousStart) {
+        payload.licenseStartsAt = licenseStart.value || null;
+      }
+      if (licenseEnd.value !== previousEnd) {
+        payload.licenseEndsAt = licenseEnd.value || null;
+      }
+      if (Object.keys(payload).length === 1) {
+        message("Nessuna modifica lifecycle creator.", "error");
         return;
       }
-      deleteErr.style.display = "none";
-      btn.disabled = true;
-      try {
-        const pwd = sessionStorage.getItem(STORAGE_KEY) ?? "";
-        const res = await fetch("/api/delete-locale", {
-          method: "POST",
+      await api(
+        `/api/admin/creators/${encodeURIComponent(String(governanceRecord.governance_creator_id))}`,
+        {
+          method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ password: pwd, slug }),
-        });
-        const j = await res.json().catch(() => ({}));
-        if (!res.ok || !j.ok) {
-          throw new Error(j.error || `HTTP ${res.status}`);
-        }
-        const li = btn.closest("li")!;
-        li.remove();
-      } catch (e) {
-        deleteErr.textContent = `Errore eliminando "${nome}": ${(e as Error).message}`;
-        deleteErr.style.display = "";
-        btn.disabled = false;
-      }
-    });
+          body: JSON.stringify(payload),
+        },
+      );
+      await selectVenue(selected);
+      message("Lifecycle creator aggiornato e registrato nell’audit log.", "ok");
+    } catch (error) {
+      message((error as Error).message, "error");
+    } finally {
+      saveCreatorLifecycle.disabled = false;
+    }
   });
+
+  saveSiteLifecycle.addEventListener("click", async () => {
+    if (!selected || !governanceRecord) return;
+    if (
+      siteStatus.value === "archived" &&
+      governanceRecord.site_status !== "archived" &&
+      !confirm("Archiviare definitivamente il sito creator?")
+    ) {
+      return;
+    }
+    saveSiteLifecycle.disabled = true;
+    try {
+      if (siteStatus.value === String(governanceRecord.site_status)) {
+        message("Nessuna modifica lifecycle sito.", "error");
+        return;
+      }
+      await api(
+        `/api/admin/sites/${encodeURIComponent(String(governanceRecord.governance_site_id))}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            revision: Number(governanceRecord.site_revision),
+            status: siteStatus.value,
+          }),
+        },
+      );
+      await selectVenue(selected);
+      message("Lifecycle sito aggiornato e registrato nell’audit log.", "ok");
+    } catch (error) {
+      message((error as Error).message, "error");
+    } finally {
+      saveSiteLifecycle.disabled = governanceRecord?.site_status === "archived";
+    }
+  });
+
+  mediaForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!selected || !mediaForm.reportValidity()) return;
+    const form = new FormData(mediaForm);
+    form.set("venueId", selected.venueId);
+    form.set("listingId", selected.listingId);
+    form.set("isHero", form.get("isHero") ? "true" : "false");
+    try {
+      await api("/api/admin/media", { method: "POST", body: form });
+      mediaForm.reset();
+      if (selected) await selectVenue(selected);
+      message("Immagine caricata in R2; approvare i diritti prima di pubblicare.", "ok");
+    } catch (error) {
+      message((error as Error).message, "error");
+    }
+  });
+
+  document.querySelector("#new-venue")!.addEventListener("click", setCreateMode);
+  field("name").addEventListener("blur", () => {
+    if (!field("slug").value) field("slug").value = slugify(field("name").value);
+  });
+  field("creatorApprovalStatus").addEventListener("change", () => {
+    if (field("creatorApprovalStatus").value !== "approved") field("creatorApprovedAt").value = "";
+  });
+
+  (async () => {
+    try {
+      const response = await fetch("/api/admin/session", { credentials: "same-origin" });
+      session = await response.json();
+      if (!response.ok || !session.csrfToken) throw new Error("Sessione CMS non disponibile.");
+      if (!session.writesEnabled) {
+        document.querySelectorAll<HTMLButtonElement>("button").forEach((button) => button.disabled = true);
+        message("CMS in modalità sola lettura.", "error");
+      } else {
+        message("CMS pronto.", "ok");
+      }
+      applyRoleControls(false);
+      await refreshList();
+    } catch (error) {
+      message((error as Error).message, "error");
+    }
+  })();
 </script>

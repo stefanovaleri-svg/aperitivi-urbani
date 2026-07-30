@@ -1,0 +1,53 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aperitivi-urbani",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2026-07-28",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./dist"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "CONTENT_SOURCE": "markdown",
+    "PUBLIC_CONTENT_ENABLED": "true",
+    "SITE_CREATOR_HANDLE": "aperitivi-urbani",
+    "APP_ORIGIN": "https://aperitivi-urbani.YOUR_SUBDOMAIN.workers.dev",
+    "CF_ACCESS_TEAM_URL": "https://YOUR_TEAM.cloudflareaccess.com",
+    "CF_ACCESS_AUD": "REPLACE_WITH_ACCESS_AUDIENCE",
+    "CMS_WRITES_ENABLED": "false",
+    "MAX_UPLOAD_BYTES": "8388608",
+    "ANTHROPIC_MODEL": "REPLACE_WITH_APPROVED_MODEL"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "aperitivi-urbani-cms",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "preview_database_id": "DB"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "aperitivi-urbani-media",
+      "preview_bucket_name": "aperitivi-urbani-media-preview"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "EVENT_IP_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    }
+  ]
+}
