@@ -37,11 +37,16 @@ verified on 2026-08-03.
 
 - Pages projects: `camimangiacose-catalogo`, `camimangiacose-mappa`
   (production branch `main`, direct upload).
-- workers.dev subdomain exists: `stefano-valeri.workers.dev` (per-worker URL
-  toggles currently off).
-- A stale Worker `camimangiacose-local-catalogue` exists with no URL and no
-  static assets — superseded by the Pages deploy; safe to delete, but that is
-  a user decision.
+- workers.dev subdomain exists: `stefano-valeri.workers.dev`. The Workers
+  route is fully functional: the catalogue worker
+  `camimangiacose-local-catalogue` is live with ALL assets at
+  https://camimangiacose-local-catalogue.stefano-valeri.workers.dev
+  (secondary URL; the Pages URL stays canonical). `workers_dev: true` is
+  committed in the catalogue's vite.config.ts, so plain non-interactive
+  `wrangler deploy` works with no manual steps.
+- New-influencer flow (startup mode): one `wrangler pages project create
+  <name> --production-branch main`, then `wrangler pages deploy`. Pages never
+  needed the workers.dev subdomain; nothing account-level remains to fix.
 - The account owns no registered domains, so the pages.dev URLs are the
   canonical free endpoints. Attaching custom domains requires purchasing a
   domain first (user decision; attachment itself is free).
